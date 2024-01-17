@@ -65,5 +65,5 @@ Large.args = {
     primary: true,
     disabled: false,
     size: "large",
-    text: "Large",
+    text: "Large!!",
 };

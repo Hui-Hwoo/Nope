@@ -9,7 +9,8 @@
         "test": "jest",
         "build": "rollup -c --bundleConfigAsCjs",
         "storybook": "storybook dev -p 6006",
-        "build-storybook": "storybook build"
+        "build-storybook": "storybook build",
+        "chromatic": "npx chromatic --project-token=chpt_563f7cbb2e55841"
     },
     "author": "",
     "license": "ISC",
