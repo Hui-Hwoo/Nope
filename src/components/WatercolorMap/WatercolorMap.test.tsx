@@ -48,15 +48,22 @@ describe("Running Test for Marbella WatercolorMap", () => {
         expect(container.querySelectorAll('circle[filter="url(#wc-pinShadow)"]')).toHaveLength(1);
     });
 
-    test("flags an out-of-bounds marker in red", () => {
+    test("drops an out-of-bounds marker and fires onOutOfBounds", () => {
+        const onOutOfBounds = jest.fn();
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
         const { container } = render(
             <WatercolorMap
                 regions={regions}
                 markers={[{ name: "FarAway", lat: 10, lng: 10 }]}
                 watercolor={0}
+                onOutOfBounds={onOutOfBounds}
             />,
         );
-        const pin = container.querySelector('circle[filter="url(#wc-pinShadow)"]');
-        expect(pin).toHaveAttribute("fill", "#dc2626");
+        // off-map marker is NOT drawn as a pin
+        expect(container.querySelectorAll('circle[filter="url(#wc-pinShadow)"]')).toHaveLength(0);
+        // but it is surfaced via callback + a built-in warning badge
+        expect(onOutOfBounds).toHaveBeenCalledWith([{ name: "FarAway", lat: 10, lng: 10 }]);
+        expect(screen.getByText(/off-map/i)).toBeInTheDocument();
+        warn.mockRestore();
     });
 });

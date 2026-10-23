@@ -1,13 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { geoIdentity, geoPath } from "d3-geo";
 import type { FeatureCollection } from "geojson";
-import { WatercolorMapProps } from "./WatercolorMap.types";
-
-// Default light-blue watercolor ramp (overridable via `palette`).
-const BLUE = [
-    "#eff5fc", "#dce9f8", "#c6dcf3", "#accbed", "#92b9e6",
-    "#79a8df", "#639ad9", "#528ed3",
-];
+import { WatercolorMapProps, WatercolorMarker } from "./WatercolorMap.types";
+import { WATERCOLOR_PALETTES } from "./palettes";
 
 // Stable per-region color: hash the region key into the palette.
 function hashKey(key: string): number {
@@ -16,36 +11,55 @@ function hashKey(key: string): number {
     return h;
 }
 
+// Mean latitude of a FeatureCollection, for the cos(lat) aspect correction.
+function meanLat(fc: FeatureCollection): number {
+    let min = Infinity;
+    let max = -Infinity;
+    const scan = (c: any): void => {
+        if (typeof c[0] === "number") {
+            if (c[1] < min) min = c[1];
+            if (c[1] > max) max = c[1];
+        } else {
+            for (const x of c) scan(x);
+        }
+    };
+    for (const f of fc.features) scan((f.geometry as any).coordinates);
+    return Number.isFinite(min) ? (min + max) / 2 : 0;
+}
+
 /**
  * A fast, dependency-light SVG "watercolor" choropleth map.
  *
  * Renders region polygons with hashed fills + white street strokes, optional
- * road lines, and pins for points of interest. Out-of-bounds pins (bad
- * coordinates) are clamped into view and flagged red so typos are obvious.
+ * road lines, and pins for points of interest. Markers whose coordinates fall
+ * outside the mapped area are dropped (not drawn); a warning is surfaced via
+ * the built-in badge and the `onOutOfBounds` callback.
  *
- * Uses a planar `geoIdentity` projection with a cos(lat) aspect correction —
- * this avoids the winding-collapse bug `geoMercator` hits on some tract data.
+ * Uses a planar `geoIdentity` projection with a cos(lat) aspect correction. The
+ * correction latitude is auto-derived from the region bounds, so the component
+ * works for any city without configuration. This also avoids the winding-collapse
+ * bug `geoMercator` hits on some tract/boundary data.
  */
 const WatercolorMap: React.FC<WatercolorMapProps> = ({
     regions,
     roads,
     markers = [],
-    palette = BLUE,
+    palette = WATERCOLOR_PALETTES.blue as unknown as string[],
     width = 900,
     height = 720,
-    lat0 = 37.6,
+    lat0,
     watercolor = 4,
+    onOutOfBounds,
+    showOutOfBoundsWarning = true,
 }) => {
     const [hover, setHover] = useState<number | null>(null);
 
-    // cos(lat) longitude correction so 1°lng ≈ 1°lat visually (planar projection).
-    const K = useMemo(() => Math.cos((lat0 * Math.PI) / 180), [lat0]);
-    const tx = useMemo(
-        () => (lng: number, lat: number): [number, number] => [lng * K, -lat],
-        [K],
-    );
+    const { d, project, rg, rr, tx, bounds } = useMemo(() => {
+        // Auto-derive the aspect-correction latitude from the data when not given.
+        const lat = lat0 ?? meanLat(regions);
+        const K = Math.cos((lat * Math.PI) / 180);
+        const tx = (lng: number, latDeg: number): [number, number] => [lng * K, -latDeg];
 
-    const { d, project, rg, rr, bounds } = useMemo(() => {
         const warp = (c: any): any =>
             typeof c[0] === "number" ? tx(c[0], c[1]) : c.map(warp);
         const warpFC = (fc?: FeatureCollection) =>
@@ -72,14 +86,40 @@ const WatercolorMap: React.FC<WatercolorMapProps> = ({
         );
         const path = geoPath(projection);
         const bounds = path.bounds(rg as any) as [[number, number], [number, number]];
-        return { d: path, project: projection, rg, rr, bounds };
-    }, [regions, roads, width, height, tx]);
+        return { d: path, project: projection, rg, rr, tx, bounds };
+    }, [regions, roads, width, height, lat0]);
 
     // Is a projected point inside the map's covered area? (2px tolerance)
     const inBounds = (x: number, y: number) => {
         const [[x0, y0], [x1, y1]] = bounds;
         return x >= x0 - 2 && x <= x1 + 2 && y >= y0 - 2 && y <= y1 + 2;
     };
+
+    // Split markers into on-map (drawn) and off-map (dropped + warned).
+    const { onMap, offMap } = useMemo(() => {
+        const onMap: { h: WatercolorMarker; i: number; x: number; y: number }[] = [];
+        const offMap: WatercolorMarker[] = [];
+        markers.forEach((h, i) => {
+            const p = project(tx(h.lng, h.lat));
+            if (!p) {
+                offMap.push(h);
+                return;
+            }
+            const [x, y] = p;
+            if (inBounds(x, y)) onMap.push({ h, i, x, y });
+            else offMap.push(h);
+        });
+        return { onMap, offMap };
+    }, [markers, project, tx, bounds]);
+
+    // Surface out-of-bounds markers once per change (side effect, not during render).
+    useEffect(() => {
+        if (offMap.length === 0) return;
+        const names = offMap.map((m) => `${m.name} (${m.lat}, ${m.lng})`).join(", ");
+        // eslint-disable-next-line no-console
+        console.warn(`[WatercolorMap] ${offMap.length} marker(s) off-map, not shown: ${names}`);
+        onOutOfBounds?.(offMap);
+    }, [offMap, onOutOfBounds]);
 
     return (
         <svg
@@ -151,18 +191,10 @@ const WatercolorMap: React.FC<WatercolorMapProps> = ({
                 </g>
             )}
 
-            {/* Pins. Out-of-bounds (bad coords) are clamped into view and flagged red. */}
-            {markers.map((h, i) => {
-                const p = project(tx(h.lng, h.lat));
-                if (!p) return null;
-                const [px, py] = p;
-                const oob = !inBounds(px, py);
-                const x = oob ? Math.max(12, Math.min(width - 12, px)) : px;
-                const y = oob ? Math.max(12, Math.min(height - 12, py)) : py;
+            {/* Pins — only on-map markers are drawn. */}
+            {onMap.map(({ h, i, x, y }) => {
                 const active = hover === i;
-                const label = oob ? `⚠ ${h.name} — coords off-map` : h.name;
-                const w = Math.max(76, label.length * 7.4 + 20);
-                const fill = oob ? "#dc2626" : "#0f172a";
+                const w = Math.max(76, h.name.length * 7.4 + 20);
                 return (
                     <g
                         key={i}
@@ -171,17 +203,16 @@ const WatercolorMap: React.FC<WatercolorMapProps> = ({
                         onMouseLeave={() => setHover(null)}
                         style={{ cursor: "pointer" }}
                     >
-                        <circle r={active ? 8 : 6} fill={fill} stroke="#ffffff" strokeWidth={2.5} filter="url(#wc-pinShadow)" />
-                        {oob && <circle r={11} fill="none" stroke="#dc2626" strokeWidth={1.5} strokeOpacity={0.6} />}
+                        <circle r={active ? 8 : 6} fill="#0f172a" stroke="#ffffff" strokeWidth={2.5} filter="url(#wc-pinShadow)" />
                         {active && (
                             <g transform={`translate(${-w / 2}, ${-(h.date ? 44 : 34)})`}>
-                                <rect width={w} height={h.date ? 34 : 24} rx={8} fill={fill} />
+                                <rect width={w} height={h.date ? 34 : 24} rx={8} fill="#0f172a" />
                                 <text x={w / 2} y={15} fill="#fff" fontSize={12.5} fontWeight={600} textAnchor="middle">
-                                    {label}
+                                    {h.name}
                                 </text>
                                 {h.date && (
-                                    <text x={w / 2} y={27} fill={oob ? "#fecaca" : "#93c5c9"} fontSize={9.5} textAnchor="middle">
-                                        {oob ? `${h.lat}, ${h.lng}` : h.date}
+                                    <text x={w / 2} y={27} fill="#93c5c9" fontSize={9.5} textAnchor="middle">
+                                        {h.date}
                                     </text>
                                 )}
                             </g>
@@ -189,6 +220,17 @@ const WatercolorMap: React.FC<WatercolorMapProps> = ({
                     </g>
                 );
             })}
+
+            {/* Built-in warning badge for dropped (off-map) markers. */}
+            {showOutOfBoundsWarning && offMap.length > 0 && (
+                <g transform={`translate(${width - 14}, 14)`} style={{ pointerEvents: "none" }}>
+                    <rect x={-176} y={0} width={176} height={26} rx={13} fill="#fef2f2" stroke="#fecaca" strokeWidth={1} />
+                    <circle cx={-160} cy={13} r={4} fill="#dc2626" />
+                    <text x={-148} y={17} fill="#b91c1c" fontSize={12} fontWeight={600}>
+                        {offMap.length} pin{offMap.length > 1 ? "s" : ""} off-map (hidden)
+                    </text>
+                </g>
+            )}
         </svg>
     );
 };
