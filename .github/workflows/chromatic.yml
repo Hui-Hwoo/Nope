@@ -1,0 +1,41 @@
+name: Chromatic
+
+# Keeps the hosted Storybook on Chromatic always in sync with the code:
+# builds Storybook and publishes it on every push to main and on every PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  chromatic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Chromatic needs full git history to establish baselines.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish to Chromatic
+        uses: chromaui/action@latest
+        with:
+          # TODO: move to a GitHub secret (CHROMATIC_PROJECT_TOKEN).
+          projectToken: chpt_563f7cbb2e55841
+          # Only snapshot stories affected by the change (TurboSnap).
+          onlyChanged: true
+          # Don't fail the build just because visuals changed.
+          exitZeroOnChanges: true
+          # On main, accept changes so the baseline tracks the latest code.
+          autoAcceptChanges: main
