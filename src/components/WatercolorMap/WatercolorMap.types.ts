@@ -52,15 +52,16 @@ export interface WatercolorMapProps {
     /** Watercolor edge wobble intensity (feDisplacementMap scale). 0 disables. */
     watercolor?: number;
     /**
-     * Markers whose coordinates fall outside the mapped area are NOT drawn.
-     * When any are dropped, this fires with the offending markers so the app
-     * can surface its own message. Also logged via console.warn.
+     * Markers whose coordinates fall outside the mapped area are silently NOT
+     * drawn (end users see nothing). This fires with the offending markers so
+     * YOU can decide what to do. Intended as a developer signal — do not render
+     * it into user-facing UI unless that's genuinely what you want.
      */
     onOutOfBounds?: (markers: WatercolorMarker[]) => void;
     /**
-     * Show a small built-in "⚠ N off-map" badge when markers are dropped.
-     * Defaults to true. Set false if you render your own warning via
-     * `onOutOfBounds`.
+     * Show a small built-in "N off-map (hidden)" badge **inside the map** when
+     * markers are dropped. This is a DEV/DEBUG aid and is visible to end users,
+     * so it defaults to `false`. Only turn it on in development.
      */
     showOutOfBoundsWarning?: boolean;
 }

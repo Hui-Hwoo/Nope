@@ -32,8 +32,9 @@ function meanLat(fc: FeatureCollection): number {
  *
  * Renders region polygons with hashed fills + white street strokes, optional
  * road lines, and pins for points of interest. Markers whose coordinates fall
- * outside the mapped area are dropped (not drawn); a warning is surfaced via
- * the built-in badge and the `onOutOfBounds` callback.
+ * outside the mapped area are silently dropped (end users see nothing); the
+ * `onOutOfBounds` callback + a dev-only console.warn surface them to developers.
+ * The in-map warning badge is opt-in (`showOutOfBoundsWarning`) for debugging.
  *
  * Uses a planar `geoIdentity` projection with a cos(lat) aspect correction. The
  * correction latitude is auto-derived from the region bounds, so the component
@@ -50,7 +51,7 @@ const WatercolorMap: React.FC<WatercolorMapProps> = ({
     lat0,
     watercolor = 4,
     onOutOfBounds,
-    showOutOfBoundsWarning = true,
+    showOutOfBoundsWarning = false,
 }) => {
     const [hover, setHover] = useState<number | null>(null);
 
@@ -112,12 +113,17 @@ const WatercolorMap: React.FC<WatercolorMapProps> = ({
         return { onMap, offMap };
     }, [markers, project, tx, bounds]);
 
-    // Surface out-of-bounds markers once per change (side effect, not during render).
+    // Surface out-of-bounds markers to the DEVELOPER only — never to end users.
+    // Fire the callback always; console.warn only outside production.
     useEffect(() => {
         if (offMap.length === 0) return;
-        const names = offMap.map((m) => `${m.name} (${m.lat}, ${m.lng})`).join(", ");
-        // eslint-disable-next-line no-console
-        console.warn(`[WatercolorMap] ${offMap.length} marker(s) off-map, not shown: ${names}`);
+        const isProd =
+            typeof process !== "undefined" && process.env && process.env.NODE_ENV === "production";
+        if (!isProd) {
+            const names = offMap.map((m) => `${m.name} (${m.lat}, ${m.lng})`).join(", ");
+            // eslint-disable-next-line no-console
+            console.warn(`[WatercolorMap] ${offMap.length} marker(s) off-map, not shown: ${names}`);
+        }
         onOutOfBounds?.(offMap);
     }, [offMap, onOutOfBounds]);
 

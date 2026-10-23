@@ -43,12 +43,14 @@ export const Mono: Story = {
     render: SanFrancisco.render,
 };
 
-// A deliberately-wrong coordinate (San Jose) is dropped from the map; a built-in
-// "1 pin off-map (hidden)" badge appears and onOutOfBounds fires.
-export const OutOfBoundsWarning: Story = {
+// A deliberately-wrong coordinate (San Jose) is silently dropped — end users see
+// nothing. Here we opt into the DEV-only debug badge to visualize it; in
+// production leave showOutOfBoundsWarning off and rely on onOutOfBounds/console.
+export const OutOfBoundsDebug: Story = {
     args: {
         ...SanFrancisco.args,
         markers: [...MARKERS, { name: "Typo", date: "bad coord", lat: 37.3382, lng: -121.8863 }],
+        showOutOfBoundsWarning: true,
     },
     render: SanFrancisco.render,
 };

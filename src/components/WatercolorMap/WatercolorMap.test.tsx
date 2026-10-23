@@ -48,7 +48,7 @@ describe("Running Test for Marbella WatercolorMap", () => {
         expect(container.querySelectorAll('circle[filter="url(#wc-pinShadow)"]')).toHaveLength(1);
     });
 
-    test("drops an out-of-bounds marker and fires onOutOfBounds", () => {
+    test("drops an out-of-bounds marker; warns the developer, not the user", () => {
         const onOutOfBounds = jest.fn();
         const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
         const { container } = render(
@@ -61,8 +61,23 @@ describe("Running Test for Marbella WatercolorMap", () => {
         );
         // off-map marker is NOT drawn as a pin
         expect(container.querySelectorAll('circle[filter="url(#wc-pinShadow)"]')).toHaveLength(0);
-        // but it is surfaced via callback + a built-in warning badge
+        // surfaced to the developer via callback...
         expect(onOutOfBounds).toHaveBeenCalledWith([{ name: "FarAway", lat: 10, lng: 10 }]);
+        // ...but NOT shown to end users by default (no visible badge)
+        expect(screen.queryByText(/off-map/i)).not.toBeInTheDocument();
+        warn.mockRestore();
+    });
+
+    test("shows the debug badge only when explicitly enabled", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        render(
+            <WatercolorMap
+                regions={regions}
+                markers={[{ name: "FarAway", lat: 10, lng: 10 }]}
+                watercolor={0}
+                showOutOfBoundsWarning
+            />,
+        );
         expect(screen.getByText(/off-map/i)).toBeInTheDocument();
         warn.mockRestore();
     });

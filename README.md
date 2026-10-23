@@ -47,8 +47,8 @@ const markers: WatercolorMarker[] = [
 | `width` / `height` | `number` | `900` / `720` | SVG viewBox size. |
 | `lat0` | `number` | *auto* | Latitude for the `cos(lat)` aspect correction. **Omit it** — auto-derived from region bounds, so any city renders correctly. |
 | `watercolor` | `number` | `4` | Edge-wobble intensity (`feDisplacementMap` scale). `0` disables. |
-| `onOutOfBounds` | `(markers) => void` | — | Fires with any markers whose coords fall outside the map. Such pins are **not drawn**. |
-| `showOutOfBoundsWarning` | `boolean` | `true` | Show the built-in "⚠ N off-map (hidden)" badge. Set `false` to render your own via `onOutOfBounds`. |
+| `onOutOfBounds` | `(markers) => void` | — | Fires with any markers whose coords fall outside the map. Such pins are **not drawn**. A developer signal — don't pipe it into user-facing UI. |
+| `showOutOfBoundsWarning` | `boolean` | `false` | Opt-in **dev/debug** badge drawn inside the map. Visible to end users, so it's **off by default**. |
 
 Region fills are assigned by hashing `properties.name` (falls back to `GEOID` /
 `id`), so colors are stable across renders and don't need to be precomputed.
@@ -57,9 +57,11 @@ Region fills are assigned by hashing `properties.name` (falls back to `GEOID` /
 `mono` ramps. Pass any `string[]` of your own (light → dark).
 
 **Out-of-bounds pins.** If a marker's `lat`/`lng` lands outside the mapped area
-(a typo, or a city you haven't added yet), it is **hidden**, not clamped — and a
-warning is surfaced (badge + `onOutOfBounds` callback + `console.warn`). This
-keeps the map honest: a wrong pin never silently sits at the edge.
+(a typo, or a city you haven't added yet), it is **silently hidden** — end users
+see nothing wrong, never a clamped pin at the edge. The problem is surfaced to
+**you, the developer**: via the `onOutOfBounds` callback and a `console.warn`
+(development only). The in-map warning badge is a debug aid and is **off by
+default** (`showOutOfBoundsWarning`) precisely because users shouldn't see it.
 
 #### Adding a new city
 
