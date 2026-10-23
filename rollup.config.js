@@ -26,14 +26,21 @@ export default [
             peerDepsExternal(),
             resolve(),
             commonjs(),
-            typescript({ tsconfig: "./tsconfig.json" }),
+            // JS pass only — declarations are produced by the dts config below.
+            typescript({
+                tsconfig: "./tsconfig.json",
+                declaration: false,
+                declarationDir: undefined,
+                emitDeclarationOnly: false,
+                outDir: undefined,
+            }),
             terser(),
         ],
-        external: ["react", "react-dom", "styled-components"],
+        external: ["react", "react-dom", "styled-components", "d3-geo"],
     },
     {
         input: "src/index.ts",
-        output: [{ file: "dist/types.d.ts", format: "es" }],
+        output: [{ file: packageJson.types, format: "es" }],
         plugins: [dts.default()],
     },
 ];
